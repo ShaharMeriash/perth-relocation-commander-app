@@ -13,8 +13,21 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: Checkout
+      - name: Checkout mobile repo
         uses: actions/checkout@v4
+
+      - name: Checkout web repo (source of truth)
+        uses: actions/checkout@v4
+        with:
+          repository: ShaharMeriash/perth-relocation-commander
+          path: web-source
+
+      - name: Sync source files from web repo
+        run: |
+          cp web-source/src/App.jsx src/App.jsx
+          cp web-source/src/main.jsx src/main.jsx
+          cp web-source/index.html index.html
+          cp web-source/public/icon.svg public/icon.svg
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

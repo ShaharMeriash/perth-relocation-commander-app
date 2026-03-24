@@ -55,6 +55,16 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      - name: Generate app icon from SVG
+        run: |
+          sudo apt-get install -y librsvg2-bin
+          mkdir -p assets
+          rsvg-convert -w 1024 -h 1024 public/icon.svg > assets/icon.png
+          rsvg-convert -w 2732 -h 2732 public/icon.svg > assets/splash.png
+
+      - name: Generate Android icon sizes
+        run: npx capacitor-assets generate --android
+
       - name: Sync Capacitor
         run: npx cap sync android
 

@@ -3,14 +3,11 @@
   "appName": "Perth Relocation",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "url": "https://perth-relo-a67d93.netlify.app",
+    "cleartext": false
   },
   "android": {
-    "allowMixedContent": true
-  },
-  "plugins": {
-    "CapacitorUpdater": {
-      "autoUpdate": true
-    }
+    "allowMixedContent": false
   }
 }

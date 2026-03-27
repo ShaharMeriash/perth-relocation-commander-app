@@ -1,4 +1,4 @@
-name: Build APK + Deploy OTA
+name: Build APK
 
 on:
   push:
@@ -29,10 +29,6 @@ jobs:
           cp web-source/index.html index.html
           cp web-source/public/icon.svg public/icon.svg
 
-      - name: Inject Capgo notifyAppReady into main.jsx
-        run: |
-          printf 'import { CapacitorUpdater } from "@capgo/capacitor-updater";\nCapacitorUpdater.notifyAppReady();\n%s' "$(cat src/main.jsx)" > src/main.jsx
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -49,10 +45,6 @@ jobs:
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-
-      - name: Upload OTA bundle to Capgo
-        run: npx @capgo/cli@latest bundle upload -a ${{ secrets.CAPGO_TOKEN }} --channel production
-        continue-on-error: true  # don't fail full build if Capgo token not set yet
 
       - name: Setup Java 17
         uses: actions/setup-java@v4

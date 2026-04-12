@@ -226,6 +226,26 @@ html,body,#root{height:100%;background:var(--bg);color:var(--t0);font-family:var
 .doc-row{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--bd);transition:background .1s;}
 .doc-row:hover{background:var(--s1);}
 .doc-row:last-child{border-bottom:none;}
+
+/* ── DOCS CATEGORY GRID ── */
+.doc-cat-section{margin-bottom:20px;}
+.doc-cat-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.doc-cat-title{font-family:var(--fd);font-size:13px;font-weight:700;color:var(--t0);}
+.doc-cat-count{font-size:10px;color:var(--t2);background:var(--s2);border:1px solid var(--bd);border-radius:20px;padding:1px 8px;font-weight:600;}
+.doc-cat-add{background:none;border:1px dashed var(--bd2);border-radius:7px;color:var(--t2);font-size:11px;padding:2px 9px;cursor:pointer;font-family:var(--fb);transition:all .13s;}
+.doc-cat-add:hover{border-color:var(--g);color:var(--g);}
+.doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+.doc-cube{background:var(--s0);border:1px solid var(--bd);border-radius:var(--r);padding:12px 12px 10px;display:flex;flex-direction:column;gap:6px;transition:all .13s;position:relative;cursor:default;}
+.doc-cube:hover{border-color:var(--bd2);box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.doc-cube.has-file{border-color:rgba(0,184,150,.3);background:var(--g3);}
+.doc-cube-name{font-size:12px;font-weight:700;color:var(--t0);line-height:1.3;word-break:break-word;}
+.doc-cube-meta{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:1px;}
+.doc-cube-actions{display:flex;gap:4px;margin-top:4px;}
+.doc-cube-file{font-size:10px;color:var(--g);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.doc-cube-nofile{font-size:10px;color:var(--t3);}
+.doc-cube-exp{font-size:10px;color:var(--am);margin-top:1px;}
+.doc-cube-link{font-size:10px;color:var(--t2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+@media(max-width:580px){.doc-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;}}
 .drive-btn{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:6px;font-size:10px;font-weight:700;background:#1a73e8;color:#fff;text-decoration:none;border:none;cursor:pointer;transition:opacity .13s;white-space:nowrap;}
 .drive-btn:hover{opacity:.85;}
 .upload-zone{border:2px dashed var(--bd2);border-radius:10px;padding:18px;text-align:center;cursor:pointer;transition:all .15s;background:var(--s2);}
@@ -1684,110 +1704,116 @@ function DocumentsTab({docs,setDocs,items,T,drive}){
   const pending=docs.filter(d=>!d.status||d.status==="pending").length;
   const hasFilters=search||filterCat||filterSt||filterFile||filterAid;
 
+  // Group visible docs by category
+  const CAT_UNCATEGORIZED = "Uncategorized";
+  const catOrder = [...existingCats.filter(Boolean), CAT_UNCATEGORIZED];
+  const byCategory = catOrder.reduce((acc,cat)=>{
+    const catDocs = visible.filter(d=>(d.category||CAT_UNCATEGORIZED)===cat);
+    if(catDocs.length) acc[cat]=catDocs;
+    return acc;
+  },{});
+  // Catch any cats in visible that weren't in existingCats
+  visible.forEach(d=>{
+    const cat=d.category||CAT_UNCATEGORIZED;
+    if(!byCategory[cat]) byCategory[cat]=[d];
+    else if(!byCategory[cat].includes(d)) byCategory[cat].push(d);
+  });
+
   return(
     <>
       {/* Hidden inline file input */}
       <input ref={inlineRef} type="file" style={{display:"none"}} onChange={e=>{handleInlineFile(e.target.files[0]||null);e.target.value="";}}/>
 
       {/* Header row */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-          <span style={{fontSize:12,color:"var(--t1)"}}><strong>{docs.length}</strong> docs · <strong>{docs.filter(d=>docHasFile(d)).length}</strong> with files</span>
-          <span style={{fontSize:12,color:"var(--g)"}}>✓ {collected} collected</span>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{fontSize:12,color:"var(--t1)"}}><strong>{docs.length}</strong> docs</span>
+          <span style={{fontSize:12,color:"var(--g)"}}>✓ {collected} ready</span>
           <span style={{fontSize:12,color:"var(--am)"}}>{pending} pending</span>
           {docs.filter(d=>d.exp&&new Date(d.exp)<soonDate).length>0&&
-            <span style={{fontSize:12,color:"var(--am)"}}>⚠️ {docs.filter(d=>d.exp&&new Date(d.exp)<soonDate).length} expiring soon</span>}
-          {hasFilters&&visible.length!==docs.length&&<span style={{fontSize:12,color:"var(--t2)"}}>showing {visible.length}</span>}
+            <span style={{fontSize:12,color:"var(--am)"}}>⚠️ {docs.filter(d=>d.exp&&new Date(d.exp)<soonDate).length} expiring</span>}
         </div>
-        <button className="btn btn-g btn-sm" onClick={()=>{reset();setMo(true);}}>+ Add Document</button>
+        <button className="btn btn-g btn-sm" onClick={()=>{reset();setMo(true);}}>+ Add Doc</button>
       </div>
 
-      {/* Filter + sort bar */}
-      <div className="filter-bar" style={{marginBottom:12}}>
-        <input className="search-in" placeholder="Search name, notes, category…" value={search} onChange={e=>setSearch(e.target.value)} style={{flex:"1 1 160px",minWidth:120}}/>
-        <select className="fsel" value={filterCat} onChange={e=>setFilterCat(e.target.value)}>
-          <option value="">All categories</option>
-          {existingCats.map(c=><option key={c}>{c}</option>)}
-        </select>
-        <select className="fsel" value={filterSt} onChange={e=>setFilterSt(e.target.value)}>
-          <option value="">All statuses</option>
-          {DOC_STATUSES.map(s=><option key={s} value={s}>{DOC_STATUS_LABEL[s]}</option>)}
-        </select>
-        <select className="fsel" value={filterAid} onChange={e=>setFilterAid(e.target.value)}>
-          <option value="">All actions</option>
-          {linkedAids.map(aid=><option key={aid} value={aid}>{items.find(a=>a.id===aid)?.title||aid}</option>)}
-        </select>
-        <button className={"btn btn-sm "+(filterFile?"btn-g":"btn-s")} onClick={()=>setFilterFile(v=>!v)} title="Only docs with files">📂 Has file</button>
-        <select className="fsel" value={sortBy} onChange={e=>setSortBy(e.target.value)}>
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
-          <option value="alpha">A → Z</option>
-          <option value="status">By status</option>
-          <option value="hasfile">Has file first</option>
-          <option value="expiry">By expiry</option>
-        </select>
-        {hasFilters&&<button className="btn btn-s btn-sm" onClick={()=>{setSearch("");setFilterCat("");setFilterSt("");setFilterFile(false);setFilterAid("");}}>✕ Clear</button>}
+      {/* Search bar (slim) */}
+      <div style={{display:"flex",gap:7,marginBottom:16,alignItems:"center"}}>
+        <input className="search-in" placeholder="🔍 Search docs…" value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1}}/>
+        {search&&<button className="btn btn-s btn-sm" onClick={()=>setSearch("")}>✕</button>}
       </div>
 
-      {/* Doc list */}
-      <div className="card" style={{padding:0,overflow:"hidden"}}>
-        {visible.map(d=>{
-          const expiring=d.exp&&new Date(d.exp)<soonDate;
-          const sc=DOC_STATUS_CLS[d.status||"pending"]||"tam";
-          const sl=DOC_STATUS_LABEL[d.status||"pending"]||"Pending";
-          const allFiles=docAllFiles(d);
-          const isInlineUploading = inlineUploading && inlineId===d.id;
-          return(
-            <div key={d.id} className="doc-row">
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                  <span style={{fontWeight:600,fontSize:13}}>{d.type}</span>
-                  {/* Inline status — click to cycle */}
-                  <span
-                    className={"tag "+sc+" status-tog"}
-                    title={"Click to change status · next: "+DOC_STATUS_LABEL[DOC_STATUS_CYCLE[d.status||"pending"]]}
-                    onClick={()=>cycleDocStatus(d.id)}
-                  >{sl}</span>
-                  {d.category&&<span className="tag t3">{d.category}</span>}
-                </div>
-                {allFiles.length>0&&(
-                  <div style={{display:"flex",gap:4,marginTop:5,flexWrap:"wrap"}}>
-                    {allFiles.map((file,fi)=>(
-                      <a key={fi} className="drive-btn" href={file.driveUrl} target="_blank" rel="noopener noreferrer">
-                        📂 {file.driveFileName||(allFiles.length>1?"File "+(fi+1):"File")}
-                      </a>
-                    ))}
-                  </div>
-                )}
-                <div style={{display:"flex",gap:10,marginTop:4,flexWrap:"wrap"}}>
-                  {d.exp&&<span style={{fontSize:11,color:expiring?"var(--am)":"var(--t2)"}}>Expires {d.exp}{expiring?" ⚠️":""}</span>}
-                  {d.aid&&<span style={{fontSize:11,color:"var(--t2)"}}>🔗 {items.find(a=>a.id===d.aid)?.title||d.aid}</span>}
-                  {d.notes&&<span style={{fontSize:11,color:"var(--t1)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:260}}>{d.notes}</span>}
-                </div>
-              </div>
-              <div style={{display:"flex",gap:5,flexShrink:0,marginLeft:10,alignItems:"center"}}>
-                {/* Inline file upload — only on web */}
-                {drive!==null&&(
-                  <button
-                    className="btn btn-s btn-sm"
-                    title={drive?.isAuthed?"Upload file":"Connect Drive to upload"}
-                    disabled={isInlineUploading}
-                    onClick={()=>{setInlineId(d.id);setTimeout(()=>inlineRef.current?.click(),0);}}
-                  >{isInlineUploading?"⏳":"📎"}</button>
-                )}
-                <button className="btn btn-s btn-sm" onClick={()=>openEdit(d)}>Edit</button>
-                <button className="btn btn-s btn-sm" onClick={()=>duplicate(d)} title="Duplicate (no files)">⧉</button>
-                <button className="btn btn-d btn-sm" onClick={()=>setDocs(p=>p.filter(x=>x.id!==d.id))}>✕</button>
-              </div>
-            </div>
-          );
-        })}
-        {!visible.length&&(
-          <div style={{color:"var(--t2)",textAlign:"center",padding:"28px 0",fontSize:13}}>
-            {hasFilters?"No documents match the current filters":"No documents yet — add one above"}
+      {/* Category sections */}
+      {Object.keys(byCategory).length===0&&(
+        <div style={{color:"var(--t2)",textAlign:"center",padding:"40px 0",fontSize:13}}>
+          {search?"No documents match your search":"No documents yet — tap + Add Doc to get started"}
+        </div>
+      )}
+      {Object.entries(byCategory).map(([cat,catDocs])=>(
+        <div key={cat} className="doc-cat-section">
+          <div className="doc-cat-header">
+            <span className="doc-cat-title">📁 {cat}</span>
+            <span className="doc-cat-count">{catDocs.length}</span>
+            <button className="doc-cat-add" onClick={()=>{reset();setF(p=>({...p,category:cat===CAT_UNCATEGORIZED?"":cat}));setMo(true);}}>+ Add</button>
           </div>
-        )}
-      </div>
+          <div className="doc-grid">
+            {catDocs.map(d=>{
+              const expiring=d.exp&&new Date(d.exp)<soonDate;
+              const sc=DOC_STATUS_CLS[d.status||"pending"]||"tam";
+              const sl=DOC_STATUS_LABEL[d.status||"pending"]||"Pending";
+              const allFiles=docAllFiles(d);
+              const hasFile=allFiles.length>0;
+              const isInlineUploading=inlineUploading&&inlineId===d.id;
+              const linkedItem=d.aid?items.find(a=>a.id===d.aid):null;
+              return(
+                <div key={d.id} className={`doc-cube${hasFile?" has-file":""}`}>
+                  {/* Name */}
+                  <div className="doc-cube-name">{d.type||"Document"}</div>
+
+                  {/* Status badge — click to cycle */}
+                  <div className="doc-cube-meta">
+                    <span
+                      className={"tag "+sc+" status-tog"}
+                      title={"Click to change → "+DOC_STATUS_LABEL[DOC_STATUS_CYCLE[d.status||"pending"]]}
+                      onClick={()=>cycleDocStatus(d.id)}
+                    >{sl}</span>
+                  </div>
+
+                  {/* File link(s) or placeholder */}
+                  {hasFile?(
+                    <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                      {allFiles.map((file,fi)=>(
+                        <a key={fi} href={file.driveUrl} target="_blank" rel="noopener noreferrer" className="doc-cube-file">
+                          📂 {file.driveFileName||(allFiles.length>1?`File ${fi+1}`:"File")}
+                        </a>
+                      ))}
+                    </div>
+                  ):(
+                    <div className="doc-cube-nofile">No file yet</div>
+                  )}
+
+                  {/* Expiry */}
+                  {d.exp&&<div className="doc-cube-exp">{expiring?"⚠️ ":""}Exp {d.exp}</div>}
+
+                  {/* Linked item */}
+                  {linkedItem&&<div className="doc-cube-link">🔗 {linkedItem.title}</div>}
+
+                  {/* Actions */}
+                  <div className="doc-cube-actions">
+                    {drive!==null&&(
+                      <button className="btn btn-s btn-xs" title={drive?.isAuthed?"Upload file":"Connect Drive first"} disabled={isInlineUploading}
+                        onClick={()=>{setInlineId(d.id);setTimeout(()=>inlineRef.current?.click(),0);}}>
+                        {isInlineUploading?"⏳":"📎"}
+                      </button>
+                    )}
+                    <button className="btn btn-s btn-xs" onClick={()=>openEdit(d)}>Edit</button>
+                    <button className="btn btn-d btn-xs" onClick={()=>setDocs(p=>p.filter(x=>x.id!==d.id))}>✕</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
 
       {/* Modal */}
       {mo&&<div className="overlay" onClick={e=>e.target===e.currentTarget&&(setMo(false),reset())}>

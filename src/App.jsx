@@ -1,27 +1,29 @@
-import React, { useState, useEffect, useRef } from "react"; // v3 — live rates + flight panel
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { initializeApp, getApps } from "firebase/app";
+import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Inter:wght@300;400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{
-  --bg:#080d1a;--s0:#0e1525;--s1:#111e30;--s2:#16263d;--s3:#1c3050;
-  --bd:#233554;--bd2:#2e4468;
-  --g:#00d4aa;--g2:rgba(0,212,170,.12);--g3:rgba(0,212,170,.06);
+  --bg:#f5f7fc;--s0:#ffffff;--s1:#f0f3fa;--s2:#e8edf7;--s3:#dce3f0;
+  --bd:#cdd5e8;--bd2:#bbc5db;
+  --g:#00b896;--g2:rgba(0,184,150,.12);--g3:rgba(0,184,150,.06);
   --b:#3b82f6;--b2:rgba(59,130,246,.12);
   --am:#f59e0b;--am2:rgba(245,158,11,.12);
   --re:#ef4444;--re2:rgba(239,68,68,.12);
-  --t0:#f0f4fa;--t1:#a8bcd4;--t2:#5a7a9e;--t3:#2d4a68;
-  --fd:'Syne',sans-serif;--fb:'DM Sans',sans-serif;
+  --t0:#1a2540;--t1:#4a5e7a;--t2:#8096b4;--t3:#c0cfe0;
+  --fd:'Plus Jakarta Sans',sans-serif;--fb:'Inter',sans-serif;
   --r:10px;--rl:16px;
 }
 html,body,#root{height:100%;background:var(--bg);color:var(--t0);font-family:var(--fb);}
 
 /* ── LAYOUT ── */
-.app{display:flex;height:100vh;overflow:hidden;}
+.app{display:flex;height:100vh;height:100dvh;overflow:hidden;}
 .sidebar{width:200px;min-width:200px;background:var(--s0);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden;}
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);}
-.page-body{flex:1;overflow-y:auto;padding:24px 28px;}
+.page-body{flex:1;overflow-y:auto;padding:24px 28px;padding-left:max(28px,env(safe-area-inset-left));padding-right:max(28px,env(safe-area-inset-right));}
 
 /* ── SIDEBAR ── */
 .logo-area{padding:20px 16px 14px;border-bottom:1px solid var(--bd);}
@@ -123,8 +125,8 @@ html,body,#root{height:100%;background:var(--bg);color:var(--t0);font-family:var
 .btn-xs{padding:3px 8px;font-size:10px;}
 
 /* ── MODAL ── */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(6px);}
-.modal{background:var(--s0);border:1px solid var(--bd);border-radius:20px;padding:24px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+.overlay{position:fixed;inset:0;background:rgba(30,40,80,.4);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px);}
+.modal{background:var(--s0);border:1px solid var(--bd);border-radius:20px;padding:24px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(30,40,80,.15);}
 .modal-title{font-family:var(--fd);font-size:18px;font-weight:800;margin-bottom:18px;}
 .modal-section{font-family:var(--fd);font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:1px;margin:16px 0 10px;}
 .modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--bd);}
@@ -168,15 +170,15 @@ html,body,#root{height:100%;background:var(--bg);color:var(--t0);font-family:var
 .rate-updated{font-size:10px;color:var(--t3);margin-left:4px;}
 
 /* ── PhD GATE ── */
-.phd-gate{background:linear-gradient(135deg,#1e1000,#0e0a00);border:1px solid rgba(245,158,11,.35);border-radius:var(--rl);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;}
-.phd-gate.unlocked{background:linear-gradient(135deg,#001a13,#000e1f);border-color:rgba(0,212,170,.35);}
+.phd-gate{background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(245,158,11,.03));border:1px solid rgba(245,158,11,.3);border-radius:var(--rl);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;}
+.phd-gate.unlocked{background:linear-gradient(135deg,rgba(0,184,150,.08),rgba(59,130,246,.06));border-color:rgba(0,184,150,.3);}
 .phd-pill{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--am);font-weight:700;}
 .phd-gate.unlocked .phd-pill{color:var(--g);}
 .phd-name{font-family:var(--fd);font-size:14px;font-weight:700;margin-top:2px;}
 .phd-hint{font-size:11px;color:var(--t1);margin-top:2px;}
 
 /* ── COUNTDOWN ── */
-.countdown{background:linear-gradient(135deg,#001f16,#000e1f);border:1px solid rgba(0,212,170,.25);border-radius:var(--rl);padding:20px;box-shadow:0 0 40px rgba(0,212,170,.07);}
+.countdown{background:linear-gradient(135deg,rgba(0,184,150,.07),rgba(59,130,246,.05));border:1px solid rgba(0,184,150,.2);border-radius:var(--rl);padding:20px;box-shadow:0 4px 24px rgba(0,184,150,.08);}
 .cd-label{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--g);}
 .cd-title{font-family:var(--fd);font-size:16px;font-weight:800;margin-top:4px;}
 .cd-units{display:flex;gap:8px;margin-top:14px;}
@@ -238,7 +240,7 @@ html,body,#root{height:100%;background:var(--bg);color:var(--t0);font-family:var
 .shop-row:last-child{border-bottom:none;}
 
 /* ── FLIGHT PANEL ── */
-.flight-panel{background:linear-gradient(135deg,#030d1f,#041228);border:1px solid rgba(59,130,246,.3);border-radius:var(--rl);padding:16px 18px;margin-top:12px;}
+.flight-panel{background:linear-gradient(135deg,var(--s1),var(--s2));border:1px solid rgba(59,130,246,.2);border-radius:var(--rl);padding:16px 18px;margin-top:12px;}
 .flight-panel-title{font-family:var(--fd);font-size:13px;font-weight:800;color:var(--t0);margin-bottom:4px;}
 .flight-panel-meta{font-size:11px;color:var(--t2);margin-bottom:14px;line-height:1.7;}
 .flight-panel-meta strong{color:var(--t1);}
@@ -610,6 +612,10 @@ function totalCostILS(a, rates){
   // Otherwise convert cost1 to ILS (ignore cost2 — same transaction different currency)
   return conv(a.cost, a.cur, rates, "ILS");
 }
+function totalIncomeILS(a, rates){
+  if(!a.income||!+a.income) return 0;
+  return conv(a.income, a.incomeCur||"ILS", rates, "ILS");
+}
 function stCls(s){return s==="in progress"?"tprog":s==="done"?"tdone":s==="irrelevant"?"tirr":"tbd";}
 function prCls(p){return p==="High"?"tr":p==="Medium"?"tam":"t3";}
 function ownerInit(o){return(o||"?")[0];}
@@ -730,6 +736,69 @@ function useGoogleDrive(){
   return {token:isAuthed?token:null,isAuthed,signIn,signOut,authLoading};
 }
 
+// ─── FIRESTORE SYNC ───────────────────────────────────────────────────────────
+const FB_CFG = {
+  apiKey:    import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:"perth-relocation.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  appId:     import.meta.env.VITE_FIREBASE_APP_ID,
+};
+
+function useFirestoreSync(state, setters) {
+  const [syncStatus, setSyncStatus] = useState("off"); // off | connecting | live | error
+  const [syncErr,   setSyncErr]    = useState("");
+  const refRef   = useRef(null);
+  const skipRef  = useRef(false);
+  const timerRef = useRef(null);
+
+  // Init + subscribe
+  useEffect(() => {
+    if(!FB_CFG.apiKey || !FB_CFG.projectId || !FB_CFG.appId) return;
+    setSyncStatus("connecting");
+    try {
+      const fbApp = getApps().length ? getApps()[0] : initializeApp(FB_CFG);
+      const db    = getFirestore(fbApp);
+      const ref   = doc(db, "prc", "state");
+      refRef.current = ref;
+
+      const unsub = onSnapshot(ref, snap => {
+        if(skipRef.current) return;
+        if(!snap.exists()) { setSyncStatus("live"); return; }
+        const d = snap.data();
+        if(d.plans) setters.setPlans(d.plans);
+        if(d.items) setters.setItems(d.items);
+        if(d.docs)  setters.setDocs(d.docs);
+        if(d.shop)  setters.setShop(d.shop);
+        if(d.rates) setters.setRates(d.rates);
+        if(d.cur)   setters.setCur(d.cur);
+        setSyncStatus("live");
+      }, (e) => { setSyncStatus("error"); setSyncErr(e?.code||e?.message||"unknown"); });
+
+      return () => unsub();
+    } catch(e) { setSyncStatus("error"); setSyncErr(e?.code||e?.message||"init"); }
+  }, []);
+
+  // Debounced write
+  const save = useCallback(() => {
+    if(!refRef.current) return;
+    skipRef.current = true;
+    setDoc(refRef.current, {
+      plans: state.plans, items: state.items, docs: state.docs,
+      shop: state.shop, rates: state.rates, cur: state.cur, _t: Date.now()
+    }).then(() => setTimeout(() => { skipRef.current = false; }, 600))
+      .catch(() => { skipRef.current = false; });
+  }, [state.plans, state.items, state.docs, state.shop, state.rates, state.cur]);
+
+  useEffect(() => {
+    if(syncStatus !== "live") return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(save, 1200);
+    return () => clearTimeout(timerRef.current);
+  }, [state.plans, state.items, state.docs, state.shop, state.rates, state.cur, syncStatus]);
+
+  return {status: syncStatus, err: syncErr};
+}
+
 // ─── PIE CHART ────────────────────────────────────────────────────────────────
 function Pie({data}){
   const COLS=["#00d4aa","#3b82f6","#f59e0b","#ef4444","#8b5cf6"];
@@ -774,8 +843,15 @@ export default function App(){
   const [toast,setToast] = useState(null);
   const [modal,setModal] = useState(null);
   const [tick,setTick] = useState(getCountdown());
+  const drive = useGoogleDrive();
+  const isNative = !!(typeof window !== "undefined" && window.Capacitor?.isNativePlatform?.());
 
   useEffect(()=>{ const t=setInterval(()=>setTick(getCountdown()),1000); return()=>clearInterval(t); },[]);
+
+  const {status:syncStatus, err:syncErr} = useFirestoreSync(
+    {plans,items,docs,shop,rates,cur},
+    {setPlans,setItems,setDocs,setShop,setRates,setCur}
+  );
 
   const T=(msg,type="ok")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3500); };
 
@@ -809,13 +885,22 @@ export default function App(){
       // 1 AUD in ILS
       const audToIls = +parseFloat(audData.rates.ILS).toFixed(4);
       if(!usdToIls||!audToIls||isNaN(usdToIls)||isNaN(audToIls)) throw new Error("Bad values");
-      setRates({AUD:audToIls,USD:usdToIls,upd:new Date().toLocaleDateString("en-AU"),fetching:false});
+      setRates({AUD:audToIls,USD:usdToIls,upd:new Date().toLocaleDateString("en-AU"),fetching:false,ts:Date.now()});
+      sessionStorage.setItem("prc_rates_fetched","1");
       T(`Rates updated ✓  A$1 = ₪${audToIls}  $1 = ₪${usdToIls}`,"ok");
     }catch(e){
       setRates(r=>({...r,fetching:false}));
       T("Could not fetch — using saved rates","err");
     }
   };
+
+  // Auto-fetch rates: new session OR last fetch > 24h ago
+  useEffect(()=>{
+    const newSession = !sessionStorage.getItem("prc_rates_fetched");
+    const stale = !rates.ts || (Date.now() - rates.ts > 86400000);
+    if(newSession || stale) fetchRates();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   const fmtC = v => fmt(v,cur);
 
@@ -856,41 +941,35 @@ export default function App(){
             ))}
           </div>
           <div className="nav-bottom">
-            <div style={{fontSize:9,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"1.5px",marginBottom:7}}>Display Currency</div>
-            <div className="cur-toggle">
-              {["ILS","AUD","USD"].map(c=><button key={c} className={`cur-btn ${cur===c?"on":""}`} onClick={()=>setCur(c)}>{c}</button>)}
+            <div style={{fontSize:10,color:syncStatus==="live"?"var(--g)":syncStatus==="connecting"?"var(--am)":syncStatus==="error"?"var(--re)":"var(--t3)",display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+              <span style={{fontSize:7}}>●</span>
+              {syncStatus==="live"?"Synced":syncStatus==="connecting"?"Syncing…":syncStatus==="error"?`Sync error${syncErr?" · "+syncErr:""}`:FB_CFG.apiKey?"Local only":"No Firebase"}
             </div>
           </div>
         </nav>
 
         {/* MAIN */}
         <div className="main">
-          {/* MOBILE CURRENCY BAR */}
-          <div className="mob-cur-bar">
-            <span className="mob-cur-label">Currency</span>
-            <div className="cur-toggle">
-              {["ILS","AUD","USD"].map(c=><button key={c} className={`cur-btn ${cur===c?"on":""}`} onClick={()=>setCur(c)}>{c}</button>)}
-            </div>
-            <span style={{marginLeft:"auto",fontSize:10,color:"var(--t2)"}}>A$=₪{rates.AUD} · $=₪{rates.USD}</span>
-          </div>
-
           {page==="today" && <TodayPage items={items} plans={plans} phdDone={phdDone} tick={tick} cur={cur} rates={rates} fmtC={fmtC} totEst={totEst} totPaid={totPaid} overdue={overdue} onEdit={a=>setModal({type:"item",a})} onNew={planId=>setModal({type:"item",a:null,planId})} cycleStatus={cycleStatus} setPage={setPage}/>}
           {page==="plan"  && <PlanPage items={items} plans={plans} setPlans={setPlans} rates={rates} cur={cur} fmtC={fmtC} phdDone={phdDone} onEdit={a=>setModal({type:"item",a})} onNew={planId=>setModal({type:"item",a:null,planId})} onDelete={deleteItem} cycleStatus={cycleStatus} T={T}/>}
           {page==="finance" && <FinancePage items={items} plans={plans} rates={rates} onEdit={a=>setModal({type:"item",a})} setItems={setItems} T={T}/>}
           {page==="advisor" && <AdvisorPage items={items} plans={plans} rates={rates} onAddItem={a=>{setItems(prev=>[...prev,{...a,id:"a"+Date.now(),subs:[]}]);T("Item added to "+plans.find(p=>p.id===a.planId)?.title+" ✓");}}/>}
-          {page==="docs" && <DocsPage docs={docs} setDocs={setDocs} items={items} T={T}/>}
+          {page==="docs" && <DocsPage docs={docs} setDocs={setDocs} items={items} T={T} drive={drive} isNative={isNative}/>}
           {page==="vault" && <VaultPage items={items} shop={shop} setShop={setShop} rates={rates} cur={cur} fmtC={fmtC} shopTot={shopTot} T={T}/>}
-          {page==="settings" && <SettingsPage rates={rates} setRates={setRates} fetchRates={fetchRates} items={items} setItems={setItems} plans={plans} setPlans={setPlans}/>}
+          {page==="settings" && <SettingsPage rates={rates} setRates={setRates} fetchRates={fetchRates} items={items} setItems={setItems} plans={plans} setPlans={setPlans} syncStatus={syncStatus} syncErr={syncErr}/>}
 
           {/* RATES BAR */}
           <div className="rates-bar">
-            <div className="rate-item">
-              <span style={{color:"var(--t2)"}}>1 AUD =</span>
-              <span className="rate-val">₪{rates.AUD}</span>
+            <div className="cur-toggle">
+              {["ILS","AUD","USD"].map(c=><button key={c} className={`cur-btn ${cur===c?"on":""}`} onClick={()=>setCur(c)}>{c}</button>)}
             </div>
             <div className="rate-item">
-              <span style={{color:"var(--t2)"}}>1 USD =</span>
-              <span className="rate-val">₪{rates.USD}</span>
+              <span style={{color:"var(--t2)"}}>A$=₪</span>
+              <span className="rate-val">{rates.AUD}</span>
+            </div>
+            <div className="rate-item">
+              <span style={{color:"var(--t2)"}}>$=₪</span>
+              <span className="rate-val">{rates.USD}</span>
             </div>
             <span className="rate-updated">Updated: {rates.upd}</span>
             <button className="btn btn-s btn-sm" style={{marginLeft:"auto"}} onClick={fetchRates} disabled={rates.fetching}>
@@ -914,7 +993,7 @@ export default function App(){
         </nav>
 
       {/* ACTION MODAL */}
-      {modal?.type==="item" && <ItemModal a={modal.a} defaultPlanId={modal.planId} plans={plans} onSave={a=>{if(saveItem(a))setModal(null);}} onClose={()=>setModal(null)}/>}
+      {modal?.type==="item" && <ItemModal a={modal.a} defaultPlanId={modal.planId} plans={plans} docs={docs} setDocs={setDocs} drive={isNative?null:drive} onSave={a=>{if(saveItem(a))setModal(null);}} onClose={()=>setModal(null)}/>}
       {toast && <div className={`toast ${toast.type}`}>{toast.type==="err"?"⚠️":toast.type==="inf"?"ℹ️":"✅"} {toast.msg}</div>}
     </>
   );
@@ -1326,9 +1405,21 @@ function JourneyTab({items,phdDone}){
 // ─────────────────────────────────────────────────────────────────────────────
 // VAULT PAGE
 // ─────────────────────────────────────────────────────────────────────────────
-function DocsPage({docs,setDocs,items,T}){
-  const drive = useGoogleDrive();
+function DocsPage({docs,setDocs,items,T,drive,isNative}){
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+  // Auto-trigger Drive connect when page opens (requires user gesture on first visit,
+  // but GIS will skip the popup silently on subsequent visits if already consented)
+  const connectRef = useRef(false);
+  useEffect(()=>{
+    if(!isNative && CLIENT_ID && drive && !drive.isAuthed && !drive.authLoading && !connectRef.current){
+      connectRef.current = true;
+      // Small delay so the page renders first — keeps it feeling responsive
+      setTimeout(()=>drive.signIn().catch(()=>{ connectRef.current=false; }), 400);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
   return(
     <>
       <div className="page-header">
@@ -1336,29 +1427,44 @@ function DocsPage({docs,setDocs,items,T}){
         <div className="page-sub">Upload files directly to Google Drive · organised by category</div>
       </div>
       <div className="page-body">
-        {!CLIENT_ID&&(
-          <div className="alert alert-w" style={{marginBottom:14}}>
-            ⚙️ Set <code>VITE_GOOGLE_CLIENT_ID</code> in Netlify environment variables to enable Drive uploads.
+        {isNative?(
+          <div className="alert alert-b" style={{marginBottom:14}}>
+            🖥️ Drive upload is available on the <strong>web app</strong>. Files linked via web are viewable here.
           </div>
+        ):(
+          <>
+            {!CLIENT_ID&&(
+              <div className="alert alert-w" style={{marginBottom:14}}>
+                ⚙️ Set <code>VITE_GOOGLE_CLIENT_ID</code> in Netlify environment variables to enable Drive uploads.
+              </div>
+            )}
+            {CLIENT_ID&&!drive.isAuthed&&(
+              <div className="drive-connect">
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,fontSize:13}}>
+                    {drive.authLoading?"Connecting to Google Drive…":"Connect Google Drive"}
+                  </div>
+                  <div style={{fontSize:11,color:"var(--t2)",marginTop:2}}>
+                    {drive.authLoading?"":"One click per session to enable file uploads"}
+                  </div>
+                </div>
+                {!drive.authLoading&&(
+                  <button className="btn btn-g btn-sm" onClick={()=>drive.signIn().catch(e=>T(e.message,"err"))}>
+                    Connect Drive
+                  </button>
+                )}
+                {drive.authLoading&&<span style={{fontSize:12,color:"var(--am)"}}>⏳</span>}
+              </div>
+            )}
+            {CLIENT_ID&&drive.isAuthed&&(
+              <div className="drive-connect" style={{background:"var(--g3)",borderColor:"rgba(0,212,170,.25)"}}>
+                <span style={{color:"var(--g)",fontSize:13}}>✓ Google Drive connected</span>
+                <button className="btn btn-s btn-xs" style={{marginLeft:"auto"}} onClick={drive.signOut}>Disconnect</button>
+              </div>
+            )}
+          </>
         )}
-        {CLIENT_ID&&!drive.isAuthed&&(
-          <div className="drive-connect">
-            <div style={{flex:1}}>
-              <div style={{fontWeight:600,fontSize:13}}>Connect Google Drive</div>
-              <div style={{fontSize:11,color:"var(--t2)",marginTop:2}}>Sign in once per session to upload files directly to your Drive folder</div>
-            </div>
-            <button className="btn btn-g btn-sm" onClick={()=>drive.signIn().catch(e=>T(e.message,"err"))} disabled={drive.authLoading}>
-              {drive.authLoading?"Connecting…":"Connect Drive"}
-            </button>
-          </div>
-        )}
-        {CLIENT_ID&&drive.isAuthed&&(
-          <div className="drive-connect" style={{background:"var(--g3)",borderColor:"rgba(0,212,170,.25)"}}>
-            <span style={{color:"var(--g)",fontSize:13}}>✓ Google Drive connected</span>
-            <button className="btn btn-s btn-xs" style={{marginLeft:"auto"}} onClick={drive.signOut}>Disconnect</button>
-          </div>
-        )}
-        <DocumentsTab docs={docs} setDocs={setDocs} items={items} T={T} drive={drive}/>
+        <DocumentsTab docs={docs} setDocs={setDocs} items={items} T={T} drive={isNative?null:drive}/>
       </div>
     </>
   );
@@ -1436,94 +1542,254 @@ const DOC_STATUSES = ["pending","collected","submitted","approved","expired"];
 const DOC_STATUS_CLS = {pending:"tam",collected:"tg",submitted:"tb",approved:"tg",expired:"tr"};
 const DOC_STATUS_LABEL = {pending:"Pending",collected:"Collected",submitted:"Submitted",approved:"Approved",expired:"Expired"};
 
+// Returns unified file list — handles both legacy single-file and new multi-file shape
+function docAllFiles(d){
+  if(d.files?.length) return d.files;
+  if(d.driveFileId) return [{id:"leg",driveFileId:d.driveFileId,driveFileName:d.driveFileName,driveUrl:d.driveUrl}];
+  return [];
+}
+function docHasFile(d){ return docAllFiles(d).length>0; }
+
+function sortDocsList(docs,sortBy){
+  const s=[...docs];
+  if(sortBy==="newest") return s.sort((a,b)=>b.id.localeCompare(a.id));
+  if(sortBy==="oldest") return s.sort((a,b)=>a.id.localeCompare(b.id));
+  if(sortBy==="alpha")  return s.sort((a,b)=>(a.type||"").localeCompare(b.type||""));
+  if(sortBy==="status"){
+    const ord={pending:0,collected:1,submitted:2,approved:3,expired:4};
+    return s.sort((a,b)=>(ord[a.status||"pending"]||0)-(ord[b.status||"pending"]||0));
+  }
+  if(sortBy==="hasfile") return s.sort((a,b)=>(docHasFile(b)?1:0)-(docHasFile(a)?1:0));
+  if(sortBy==="expiry")  return s.sort((a,b)=>{
+    if(!a.exp&&!b.exp) return 0;
+    if(!a.exp) return 1; if(!b.exp) return -1;
+    return new Date(a.exp)-new Date(b.exp);
+  });
+  return s;
+}
+
 function DocumentsTab({docs,setDocs,items,T,drive}){
-  const BLANK = {id:"",type:"",category:"",status:"pending",exp:"",aid:"",driveFileId:"",driveFileName:"",driveUrl:"",notes:""};
+  const BLANK = {id:"",type:"",category:"",status:"pending",exp:"",aid:"",files:[],driveFileId:"",driveFileName:"",driveUrl:"",notes:""};
   const [mo,setMo] = useState(false);
   const [f,setF] = useState(BLANK);
-  const [pendingFile,setPendingFile] = useState(null);
+  const [pendingFiles,setPendingFiles] = useState([]);
   const [uploadProg,setUploadProg] = useState(0);
   const [uploading,setUploading] = useState(false);
   const [drag,setDrag] = useState(false);
   const fileRef = useRef();
 
+  // sort + filter
+  const [sortBy,setSortBy]         = useState("newest");
+  const [search,setSearch]         = useState("");
+  const [filterCat,setFilterCat]   = useState("");
+  const [filterSt,setFilterSt]     = useState("");
+  const [filterFile,setFilterFile] = useState(false);
+  const [filterAid,setFilterAid]   = useState("");
+
+  // inline upload
+  const [inlineId,setInlineId]     = useState(null);
+  const [inlineUploading,setInlineUploading] = useState(false);
+  const inlineRef = useRef();
+
   const sf=(k,v)=>setF(p=>({...p,[k]:v}));
-  const reset=()=>{setF(BLANK);setPendingFile(null);setUploadProg(0);};
+  const reset=()=>{setF(BLANK);setPendingFiles([]);setUploadProg(0);};
+
+  const DOC_STATUS_CYCLE = {pending:"collected",collected:"submitted",submitted:"approved",approved:"expired",expired:"pending"};
+  const cycleDocStatus = id => setDocs(prev=>prev.map(d=>d.id===id?{...d,status:DOC_STATUS_CYCLE[d.status||"pending"]}:d));
+
+  const handleInlineFile = async file => {
+    if(!file||!inlineId) return;
+    const d = docs.find(x=>x.id===inlineId);
+    if(!d) return;
+    if(!drive?.isAuthed){T("Connect Google Drive first","err");setInlineId(null);return;}
+    setInlineUploading(true);
+    T("Uploading…","inf");
+    try{
+      const folder = await driveEnsureFolder(drive.token,d.category||"General",DRIVE_ROOT);
+      const uploaded = await driveUploadFile(drive.token,file,folder.id,()=>{});
+      const newFile = {id:"f"+Date.now(),driveFileId:uploaded.id,driveFileName:uploaded.name,driveUrl:uploaded.webViewLink};
+      setDocs(prev=>prev.map(x=>x.id===d.id?{...x,files:[...(x.files||[]),newFile],driveFileId:"",driveFileName:"",driveUrl:""}:x));
+      T("Uploaded ✓");
+    }catch(e){ T("Upload failed: "+e.message,"err"); }
+    setInlineUploading(false);
+    setInlineId(null);
+  };
 
   const existingCats=[...new Set(docs.map(d=>d.category).filter(Boolean))];
+  const linkedAids=[...new Set(docs.map(d=>d.aid).filter(Boolean))];
+
+  const openEdit=d=>{
+    // Migrate legacy single file into files array on open
+    let data={...BLANK,...d,files:d.files?[...d.files]:[]};
+    if(!data.files.length&&data.driveFileId){
+      data={...data,files:[{id:"leg_"+d.id,driveFileId:d.driveFileId,driveFileName:d.driveFileName,driveUrl:d.driveUrl}]};
+    }
+    setF(data);setPendingFiles([]);setMo(true);
+  };
+
+  const duplicate=d=>{
+    const {id,files,driveFileId,driveFileName,driveUrl,...rest}=d;
+    setDocs(prev=>[...prev,{...BLANK,...rest,files:[],driveFileId:"",driveFileName:"",driveUrl:"",id:"d"+Date.now()}]);
+    T("Duplicated ✓");
+  };
 
   const save=async()=>{
     if(!f.type.trim()){T("Document type required","err");return;}
     let doc={...f};
-    if(pendingFile){
+    if(pendingFiles.length){
       if(!drive?.isAuthed){T("Connect Google Drive first","err");return;}
       setUploading(true);
       try{
         const catName=f.category.trim()||"General";
         const folder=await driveEnsureFolder(drive.token,catName,DRIVE_ROOT);
-        const uploaded=await driveUploadFile(drive.token,pendingFile,folder.id,setUploadProg);
-        doc={...doc,driveFileId:uploaded.id,driveFileName:uploaded.name,driveUrl:uploaded.webViewLink};
-        T("Uploaded to Drive ✓");
+        const newFiles=[];
+        for(let i=0;i<pendingFiles.length;i++){
+          setUploadProg(Math.round(i/pendingFiles.length*100));
+          const uploaded=await driveUploadFile(drive.token,pendingFiles[i],folder.id,()=>{});
+          newFiles.push({id:"f"+Date.now()+i,driveFileId:uploaded.id,driveFileName:uploaded.name,driveUrl:uploaded.webViewLink});
+        }
+        doc={...doc,files:[...(doc.files||[]),...newFiles]};
+        setUploadProg(100);
+        T(newFiles.length>1?`${newFiles.length} files uploaded ✓`:"Uploaded to Drive ✓");
       }catch(e){
         T("Upload failed: "+e.message,"err");
-        setUploading(false);
-        return;
+        setUploading(false);return;
       }
       setUploading(false);
     }
+    if(doc.files?.length) doc={...doc,driveFileId:"",driveFileName:"",driveUrl:""};
     setDocs(prev=>f.id?prev.map(d=>d.id===f.id?doc:d):[...prev,{...doc,id:"d"+Date.now()}]);
     setMo(false);
-    if(!pendingFile) T("Saved ✓");
+    if(!pendingFiles.length) T("Saved ✓");
     reset();
   };
 
-  const onDrop=e=>{e.preventDefault();setDrag(false);const file=e.dataTransfer.files[0];if(file)setPendingFile(file);};
+  const onDrop=e=>{
+    e.preventDefault();setDrag(false);
+    const files=Array.from(e.dataTransfer.files);
+    if(files.length) setPendingFiles(prev=>[...prev,...files]);
+  };
+
+  // Apply filters + sort
+  let visible=docs;
+  if(search.trim()){const q=search.toLowerCase();visible=visible.filter(d=>(d.type||"").toLowerCase().includes(q)||(d.notes||"").toLowerCase().includes(q)||(d.category||"").toLowerCase().includes(q));}
+  if(filterCat)  visible=visible.filter(d=>d.category===filterCat);
+  if(filterSt)   visible=visible.filter(d=>(d.status||"pending")===filterSt);
+  if(filterFile) visible=visible.filter(d=>docHasFile(d));
+  if(filterAid)  visible=visible.filter(d=>d.aid===filterAid);
+  visible=sortDocsList(visible,sortBy);
 
   const soonDate=new Date(Date.now()+365*86400000);
   const collected=docs.filter(d=>d.status==="collected"||d.status==="submitted"||d.status==="approved").length;
   const pending=docs.filter(d=>!d.status||d.status==="pending").length;
+  const hasFilters=search||filterCat||filterSt||filterFile||filterAid;
 
   return(
     <>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{display:"flex",gap:16}}>
-          <span style={{fontSize:12,color:"var(--t1)"}}>{docs.length} total</span>
+      {/* Hidden inline file input */}
+      <input ref={inlineRef} type="file" style={{display:"none"}} onChange={e=>{handleInlineFile(e.target.files[0]||null);e.target.value="";}}/>
+
+      {/* Header row */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+          <span style={{fontSize:12,color:"var(--t1)"}}><strong>{docs.length}</strong> docs · <strong>{docs.filter(d=>docHasFile(d)).length}</strong> with files</span>
           <span style={{fontSize:12,color:"var(--g)"}}>✓ {collected} collected</span>
           <span style={{fontSize:12,color:"var(--am)"}}>{pending} pending</span>
           {docs.filter(d=>d.exp&&new Date(d.exp)<soonDate).length>0&&
             <span style={{fontSize:12,color:"var(--am)"}}>⚠️ {docs.filter(d=>d.exp&&new Date(d.exp)<soonDate).length} expiring soon</span>}
+          {hasFilters&&visible.length!==docs.length&&<span style={{fontSize:12,color:"var(--t2)"}}>showing {visible.length}</span>}
         </div>
         <button className="btn btn-g btn-sm" onClick={()=>{reset();setMo(true);}}>+ Add Document</button>
       </div>
+
+      {/* Filter + sort bar */}
+      <div className="filter-bar" style={{marginBottom:12}}>
+        <input className="search-in" placeholder="Search name, notes, category…" value={search} onChange={e=>setSearch(e.target.value)} style={{flex:"1 1 160px",minWidth:120}}/>
+        <select className="fsel" value={filterCat} onChange={e=>setFilterCat(e.target.value)}>
+          <option value="">All categories</option>
+          {existingCats.map(c=><option key={c}>{c}</option>)}
+        </select>
+        <select className="fsel" value={filterSt} onChange={e=>setFilterSt(e.target.value)}>
+          <option value="">All statuses</option>
+          {DOC_STATUSES.map(s=><option key={s} value={s}>{DOC_STATUS_LABEL[s]}</option>)}
+        </select>
+        <select className="fsel" value={filterAid} onChange={e=>setFilterAid(e.target.value)}>
+          <option value="">All actions</option>
+          {linkedAids.map(aid=><option key={aid} value={aid}>{items.find(a=>a.id===aid)?.title||aid}</option>)}
+        </select>
+        <button className={"btn btn-sm "+(filterFile?"btn-g":"btn-s")} onClick={()=>setFilterFile(v=>!v)} title="Only docs with files">📂 Has file</button>
+        <select className="fsel" value={sortBy} onChange={e=>setSortBy(e.target.value)}>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="alpha">A → Z</option>
+          <option value="status">By status</option>
+          <option value="hasfile">Has file first</option>
+          <option value="expiry">By expiry</option>
+        </select>
+        {hasFilters&&<button className="btn btn-s btn-sm" onClick={()=>{setSearch("");setFilterCat("");setFilterSt("");setFilterFile(false);setFilterAid("");}}>✕ Clear</button>}
+      </div>
+
+      {/* Doc list */}
       <div className="card" style={{padding:0,overflow:"hidden"}}>
-        {docs.map(d=>{
+        {visible.map(d=>{
           const expiring=d.exp&&new Date(d.exp)<soonDate;
           const sc=DOC_STATUS_CLS[d.status||"pending"]||"tam";
           const sl=DOC_STATUS_LABEL[d.status||"pending"]||"Pending";
+          const allFiles=docAllFiles(d);
+          const isInlineUploading = inlineUploading && inlineId===d.id;
           return(
             <div key={d.id} className="doc-row">
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                   <span style={{fontWeight:600,fontSize:13}}>{d.type}</span>
-                  <span className={`tag ${sc}`}>{sl}</span>
+                  {/* Inline status — click to cycle */}
+                  <span
+                    className={"tag "+sc+" status-tog"}
+                    title={"Click to change status · next: "+DOC_STATUS_LABEL[DOC_STATUS_CYCLE[d.status||"pending"]]}
+                    onClick={()=>cycleDocStatus(d.id)}
+                  >{sl}</span>
                   {d.category&&<span className="tag t3">{d.category}</span>}
-                  {d.driveUrl&&<a className="drive-btn" href={d.driveUrl} target="_blank" rel="noopener noreferrer">📂 {d.driveFileName||"Drive"}</a>}
                 </div>
+                {allFiles.length>0&&(
+                  <div style={{display:"flex",gap:4,marginTop:5,flexWrap:"wrap"}}>
+                    {allFiles.map((file,fi)=>(
+                      <a key={fi} className="drive-btn" href={file.driveUrl} target="_blank" rel="noopener noreferrer">
+                        📂 {file.driveFileName||(allFiles.length>1?"File "+(fi+1):"File")}
+                      </a>
+                    ))}
+                  </div>
+                )}
                 <div style={{display:"flex",gap:10,marginTop:4,flexWrap:"wrap"}}>
                   {d.exp&&<span style={{fontSize:11,color:expiring?"var(--am)":"var(--t2)"}}>Expires {d.exp}{expiring?" ⚠️":""}</span>}
                   {d.aid&&<span style={{fontSize:11,color:"var(--t2)"}}>🔗 {items.find(a=>a.id===d.aid)?.title||d.aid}</span>}
-                  {d.notes&&<span style={{fontSize:11,color:"var(--t1)"}}>{d.notes}</span>}
+                  {d.notes&&<span style={{fontSize:11,color:"var(--t1)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:260}}>{d.notes}</span>}
                 </div>
               </div>
-              <div style={{display:"flex",gap:6,flexShrink:0,marginLeft:10}}>
-                <button className="btn btn-s btn-sm" onClick={()=>{setF({...BLANK,...d});setPendingFile(null);setMo(true);}}>Edit</button>
+              <div style={{display:"flex",gap:5,flexShrink:0,marginLeft:10,alignItems:"center"}}>
+                {/* Inline file upload — only on web */}
+                {drive!==null&&(
+                  <button
+                    className="btn btn-s btn-sm"
+                    title={drive?.isAuthed?"Upload file":"Connect Drive to upload"}
+                    disabled={isInlineUploading}
+                    onClick={()=>{setInlineId(d.id);setTimeout(()=>inlineRef.current?.click(),0);}}
+                  >{isInlineUploading?"⏳":"📎"}</button>
+                )}
+                <button className="btn btn-s btn-sm" onClick={()=>openEdit(d)}>Edit</button>
+                <button className="btn btn-s btn-sm" onClick={()=>duplicate(d)} title="Duplicate (no files)">⧉</button>
                 <button className="btn btn-d btn-sm" onClick={()=>setDocs(p=>p.filter(x=>x.id!==d.id))}>✕</button>
               </div>
             </div>
           );
         })}
-        {!docs.length&&<div style={{color:"var(--t2)",textAlign:"center",padding:"28px 0",fontSize:13}}>No documents yet — add one above</div>}
+        {!visible.length&&(
+          <div style={{color:"var(--t2)",textAlign:"center",padding:"28px 0",fontSize:13}}>
+            {hasFilters?"No documents match the current filters":"No documents yet — add one above"}
+          </div>
+        )}
       </div>
 
+      {/* Modal */}
       {mo&&<div className="overlay" onClick={e=>e.target===e.currentTarget&&(setMo(false),reset())}>
         <div className="modal">
           <div className="modal-title">{f.id?"Edit":"Add"} Document</div>
@@ -1552,33 +1818,61 @@ function DocumentsTab({docs,setDocs,items,T,drive}){
               </div>
             </div>
 
-            <div className="flabel" style={{marginTop:10,marginBottom:4}}>File · Upload to Google Drive</div>
-            {f.driveFileId&&!pendingFile?(
-              <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"var(--g3)",border:"1px solid rgba(0,212,170,.25)",borderRadius:8,fontSize:12,marginBottom:4}}>
-                <span style={{color:"var(--g)"}}>📂</span>
-                <a href={f.driveUrl} target="_blank" rel="noopener noreferrer" style={{color:"var(--g)",textDecoration:"none",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.driveFileName}</a>
-                <button className="btn btn-d btn-xs" onClick={()=>sf("driveFileId","")}>Replace</button>
-              </div>
-            ):(
-              <div
-                className={`upload-zone${drag?" drag":""}`}
-                onDragOver={e=>{e.preventDefault();setDrag(true);}}
-                onDragLeave={()=>setDrag(false)}
-                onDrop={onDrop}
-                onClick={()=>!uploading&&fileRef.current?.click()}
-              >
-                <input ref={fileRef} type="file" onChange={e=>{setPendingFile(e.target.files[0]||null);e.target.value="";}}/>
-                {pendingFile
-                  ?<div style={{fontSize:12,color:"var(--g)"}}>{pendingFile.name} <span style={{color:"var(--t2)"}}>({(pendingFile.size/1024).toFixed(0)} KB)</span>
-                    <span style={{marginLeft:8,color:"var(--t2)",cursor:"pointer"}} onClick={e=>{e.stopPropagation();setPendingFile(null);}}>✕</span>
-                   </div>
-                  :<div style={{fontSize:12,color:"var(--t2)"}}>Drop file here or <span style={{color:"var(--g)"}}>click to browse</span></div>
-                }
-                {uploading&&<div className="upload-prog"><div className="upload-prog-fill" style={{width:`${uploadProg}%`}}/></div>}
-              </div>
+            {/* Files — web (Drive connected or not) */}
+            {drive!==null&&(
+              <>
+                <div className="flabel" style={{marginTop:12,marginBottom:6}}>
+                  Files · Google Drive
+                  {(f.files||[]).length>0&&<span style={{fontWeight:400,color:"var(--t2)",marginLeft:6,textTransform:"none"}}>{(f.files||[]).length} uploaded</span>}
+                </div>
+                {(f.files||[]).map((file,fi)=>(
+                  <div key={fi} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:"var(--g3)",border:"1px solid rgba(0,212,170,.25)",borderRadius:8,fontSize:12,marginBottom:5}}>
+                    <span style={{color:"var(--g)"}}>📂</span>
+                    <a href={file.driveUrl} target="_blank" rel="noopener noreferrer" style={{color:"var(--g)",textDecoration:"none",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.driveFileName}</a>
+                    <button className="btn btn-d btn-xs" onClick={()=>sf("files",(f.files||[]).filter((_,i)=>i!==fi))}>Remove</button>
+                  </div>
+                ))}
+                <div
+                  className={"upload-zone"+(drag?" drag":"")}
+                  onDragOver={e=>{e.preventDefault();setDrag(true);}}
+                  onDragLeave={()=>setDrag(false)}
+                  onDrop={onDrop}
+                  onClick={()=>!uploading&&fileRef.current?.click()}
+                  style={{marginTop:(f.files||[]).length?4:0}}
+                >
+                  <input ref={fileRef} type="file" multiple onChange={e=>{setPendingFiles(prev=>[...prev,...Array.from(e.target.files)]);e.target.value="";}}/>
+                  {pendingFiles.length>0
+                    ?<div style={{fontSize:12,color:"var(--g)"}}>
+                      {pendingFiles.length} file{pendingFiles.length>1?"s":""} selected
+                      <span style={{color:"var(--t2)",marginLeft:6}}>({(pendingFiles.reduce((s,f)=>s+f.size,0)/1024).toFixed(0)} KB total)</span>
+                      <span style={{marginLeft:8,color:"var(--t2)",cursor:"pointer"}} onClick={e=>{e.stopPropagation();setPendingFiles([]);}}>✕ clear</span>
+                     </div>
+                    :<div style={{fontSize:12,color:"var(--t2)"}}>
+                      {(f.files||[]).length?"+ Add more files — drop here or ":"Drop files here or "}
+                      <span style={{color:"var(--g)"}}>click to browse</span>
+                    </div>
+                  }
+                  {uploading&&<div className="upload-prog"><div className="upload-prog-fill" style={{width:`${uploadProg}%`}}/></div>}
+                </div>
+                {pendingFiles.length>0&&!drive?.isAuthed&&(
+                  <div style={{fontSize:11,color:"var(--am)",marginTop:4}}>⚠️ Connect Google Drive (top of page) to upload</div>
+                )}
+              </>
             )}
-            {pendingFile&&!drive?.isAuthed&&(
-              <div style={{fontSize:11,color:"var(--am)",marginTop:4}}>⚠️ Connect Google Drive (top of page) to upload this file</div>
+            {/* Files — native (read-only links) */}
+            {drive===null&&(
+              <div style={{marginTop:10}}>
+                <div className="flabel" style={{marginBottom:6}}>Files</div>
+                {docAllFiles(f).length>0?(
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {docAllFiles(f).map((file,fi)=>(
+                      <a key={fi} href={file.driveUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:12,color:"var(--g)",textDecoration:"none"}}>📂 {file.driveFileName||"File "+(fi+1)}</a>
+                    ))}
+                  </div>
+                ):(
+                  <div style={{fontSize:11,color:"var(--t2)",padding:"10px 12px",background:"var(--s2)",borderRadius:8}}>📎 File upload available on the web app</div>
+                )}
+              </div>
             )}
 
             <div className="fcol" style={{marginTop:8}}>
@@ -1589,7 +1883,7 @@ function DocumentsTab({docs,setDocs,items,T,drive}){
           <div className="modal-footer">
             <button className="btn btn-s" onClick={()=>{setMo(false);reset();}}>Cancel</button>
             <button className="btn btn-g" onClick={save} disabled={uploading}>
-              {uploading?`Uploading ${uploadProg}%…`:"Save"}
+              {uploading?`Uploading ${uploadProg}%… (${pendingFiles.length} files)`:"Save"}
             </button>
           </div>
         </div>
@@ -1659,7 +1953,7 @@ function ShoppingTab({shop,setShop,rates,cur,fmtC,T}){
 // ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS PAGE
 // ─────────────────────────────────────────────────────────────────────────────
-function SettingsPage({rates,setRates,fetchRates}){
+function SettingsPage({rates,setRates,fetchRates,syncStatus,syncErr}){
   const [audV,setAudV] = useState(String(rates.AUD));
   const [usdV,setUsdV] = useState(String(rates.USD));
   const save=()=>{
@@ -1702,6 +1996,20 @@ function SettingsPage({rates,setRates,fetchRates}){
               </div>
             </div>
             <div className="card" style={{marginTop:0}}>
+              <div className="card-title">Firebase Sync</div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                <span style={{fontSize:22,color:syncStatus==="live"?"var(--g)":syncStatus==="connecting"?"var(--am)":syncStatus==="error"?"var(--re)":"var(--t3)"}}>●</span>
+                <div>
+                  <div style={{fontWeight:600,fontSize:13,color:syncStatus==="live"?"var(--g)":syncStatus==="connecting"?"var(--am)":syncStatus==="error"?"var(--re)":"var(--t1)"}}>
+                    {syncStatus==="live"?"Synced with Firebase":syncStatus==="connecting"?"Connecting…":syncStatus==="error"?"Sync Error":"Local Only"}
+                  </div>
+                  {syncStatus==="error"&&syncErr&&<div style={{fontSize:11,color:"var(--re)",marginTop:2}}>{syncErr}</div>}
+                  {syncStatus==="off"&&<div style={{fontSize:11,color:"var(--t2)",marginTop:2}}>Firebase env vars not detected in this build</div>}
+                  {syncStatus==="live"&&<div style={{fontSize:11,color:"var(--t2)",marginTop:2}}>Data syncs across web and mobile in real-time</div>}
+                </div>
+              </div>
+            </div>
+            <div className="card" style={{marginTop:0}}>
               <div className="card-title">Data Management</div>
               <div style={{fontSize:12,color:"var(--t1)",marginBottom:12}}>All data is stored in your browser's localStorage. It persists between sessions automatically.</div>
               <button className="btn btn-d btn-sm" onClick={()=>{if(window.confirm("Reset all data to defaults? This cannot be undone.")){["prc_plans","prc_items","prc_docs","prc_shop","prc_rates","prc_cur","prc_page"].forEach(k=>localStorage.removeItem(k));window.location.reload();}}}>⚠ Reset All Data</button>
@@ -1719,31 +2027,39 @@ function SettingsPage({rates,setRates,fetchRates}){
 function FinancePage({items,plans,rates,onEdit,setItems,T}){
   const [tab,setTab] = useState("dashboard");
 
-  // All items with a cost
+  // Expenses — items with a cost
   const costItems = items.filter(a=>a.cost||a.cost2);
   const settled = costItems.filter(a=>a.settled&&a.settledDate);
   const pending = costItems.filter(a=>!a.settled);
 
-  // Totals in ILS
+  // Expense totals in ILS
   const totalEstILS = costItems.reduce((s,a)=>s+totalCostILS(a,rates),0);
   const totalSettledILS = settled.reduce((s,a)=>s+totalCostILS(a,rates),0);
   const totalPendingILS = pending.reduce((s,a)=>s+totalCostILS(a,rates),0);
 
-  // Upcoming = not settled, has ddate, within 60 days
+  // Income — items with an income field
+  const incomeItems = items.filter(a=>a.income&&+a.income>0);
+  const incomeReceived = incomeItems.filter(a=>a.incomeDate);
+  const incomePending = incomeItems.filter(a=>!a.incomeDate);
+  const totalIncomeReceivedILS = incomeReceived.reduce((s,a)=>s+totalIncomeILS(a,rates),0);
+  const totalIncomePendingILS = incomePending.reduce((s,a)=>s+totalIncomeILS(a,rates),0);
+  const totalIncomeEstILS = incomeItems.reduce((s,a)=>s+totalIncomeILS(a,rates),0);
+
+  // Upcoming expenses = not settled, has ddate, within 60 days
   const now = new Date();
   const in60 = new Date(now.getTime()+60*86400000);
   const upcoming = pending
     .filter(a=>a.ddate&&new Date(a.ddate)<=in60)
     .sort((a,b)=>new Date(a.ddate)-new Date(b.ddate));
 
-  // By plan breakdown
+  // By plan breakdown (expenses)
   const byPlan = plans.map(p=>{
     const pi = settled.filter(a=>a.planId===p.id);
     return {plan:p, ils:pi.reduce((s,a)=>s+totalCostILS(a,rates),0), count:pi.length};
   }).filter(x=>x.ils>0).sort((a,b)=>b.ils-a.ils);
   const maxPlanILS = byPlan[0]?.ils||1;
 
-  // Monthly timeline — settled by settledDate
+  // Monthly timeline — settled expenses by settledDate
   const months = {};
   settled.forEach(a=>{
     const d = new Date(a.settledDate);
@@ -1763,9 +2079,9 @@ function FinancePage({items,plans,rates,onEdit,setItems,T}){
     <>
       <div className="page-header">
         <div className="page-title">Finance 💰</div>
-        <div className="page-sub">All amounts in ILS · {settled.length} settled · {pending.length} pending</div>
+        <div className="page-sub">All amounts in ILS · {settled.length} expenses settled · {incomeReceived.length} income received</div>
         <div className="tabs">
-          {[["dashboard","Dashboard"],["settled","Settled"],["upcoming","Upcoming"]].map(([id,lbl])=>(
+          {[["dashboard","Dashboard"],["settled","Expenses"],["income","Income"],["upcoming","Upcoming"]].map(([id,lbl])=>(
             <button key={id} className={`tab ${tab===id?"on":""}`} onClick={()=>setTab(id)}>{lbl}</button>
           ))}
         </div>
@@ -1773,7 +2089,8 @@ function FinancePage({items,plans,rates,onEdit,setItems,T}){
       <div className="page-body">
 
         {tab==="dashboard" && <>
-          {/* KPI Row */}
+          {/* Expenses KPI Row */}
+          <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"1.5px",color:"var(--t2)",marginBottom:6,fontWeight:700}}>💸 Expenses</div>
           <div className="fin-kpi-row">
             <div className="fin-kpi">
               <div className="fin-kpi-label">Total Estimated</div>
@@ -1791,6 +2108,28 @@ function FinancePage({items,plans,rates,onEdit,setItems,T}){
               <div className="fin-kpi-sub">{pending.length} items outstanding</div>
             </div>
           </div>
+
+          {/* Income KPI Row */}
+          {incomeItems.length>0&&<>
+            <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:"1.5px",color:"var(--t2)",margin:"14px 0 6px",fontWeight:700}}>💵 Income</div>
+            <div className="fin-kpi-row">
+              <div className="fin-kpi">
+                <div className="fin-kpi-label">Total Expected</div>
+                <div className="fin-kpi-val vg">{ils(totalIncomeEstILS)}</div>
+                <div className="fin-kpi-sub">{incomeItems.length} items with income</div>
+              </div>
+              <div className="fin-kpi">
+                <div className="fin-kpi-label">Received</div>
+                <div className="fin-kpi-val" style={{color:"var(--g)"}}>{ils(totalIncomeReceivedILS)}</div>
+                <div className="fin-kpi-sub">{incomeReceived.length} items received</div>
+              </div>
+              <div className="fin-kpi">
+                <div className="fin-kpi-label">Still Expected</div>
+                <div className="fin-kpi-val vam">{ils(totalIncomePendingILS)}</div>
+                <div className="fin-kpi-sub">{incomePending.length} items pending</div>
+              </div>
+            </div>
+          </>}
 
           {/* Progress bar */}
           <div className="card" style={{marginBottom:12}}>
@@ -1903,6 +2242,37 @@ function FinancePage({items,plans,rates,onEdit,setItems,T}){
               );
             })}
           </div>
+        </>}
+
+        {tab==="income" && <>
+          <div style={{marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{fontSize:12,color:"var(--t1)"}}>{incomeItems.length} items · {ils(totalIncomeReceivedILS)} received · {ils(totalIncomePendingILS)} expected</div>
+          </div>
+          {incomeItems.length===0 && <div style={{color:"var(--t2)",textAlign:"center",padding:"32px 0"}}>No income items yet — open any item and toggle "Income from this item"</div>}
+          {incomeItems.length>0&&(
+            <div className="card" style={{padding:0,overflow:"hidden"}}>
+              {[...incomeReceived,...incomePending].map(a=>{
+                const plan = plans.find(p=>p.id===a.planId);
+                const received = !!a.incomeDate;
+                return(
+                  <div key={a.id} className="settled-row" style={{padding:"10px 14px"}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:600,fontSize:13}}>{a.title}</div>
+                      <div style={{display:"flex",gap:8,marginTop:3,flexWrap:"wrap",alignItems:"center"}}>
+                        {plan&&<span style={{fontSize:9,color:plan.color,fontWeight:700,textTransform:"uppercase"}}>{plan.icon} {plan.title}</span>}
+                        {received?<span style={{fontSize:11,color:"var(--g)"}}>✓ Received {a.incomeDate}</span>:<span style={{fontSize:11,color:"var(--am)"}}>⏳ Not yet received</span>}
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontFamily:"var(--fd)",fontWeight:800,fontSize:14,color:"var(--g)"}}>{ils(totalIncomeILS(a,rates))}</div>
+                      <div style={{fontSize:10,color:"var(--t2)"}}>{a.incomeCur||"ILS"} {a.income}</div>
+                      <button className="btn btn-s btn-xs" style={{marginTop:4}} onClick={()=>onEdit(a)}>Edit</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>}
 
         {tab==="upcoming" && <>
@@ -2168,18 +2538,64 @@ function FlightPanel(){
 // ─────────────────────────────────────────────────────────────────────────────
 // ITEM MODAL
 // ─────────────────────────────────────────────────────────────────────────────
-function ItemModal({a,defaultPlanId,plans,onSave,onClose}){
-  const blank={id:"",planId:defaultPlanId||plans[0]?.id||"p1",title:"",desc:"",owner:"Raz",priority:"High",status:"tbd",phase:"Month -3",ddate:"",cost:"",cur:"ILS",cost2:"",cur2:"AUD",vendor:"",comments:"",subs:[]};
+function ItemModal({a,defaultPlanId,plans,docs,setDocs,drive,onSave,onClose}){
+  const blank={id:"",planId:defaultPlanId||plans[0]?.id||"p1",title:"",desc:"",owner:"Raz",priority:"High",status:"tbd",phase:"Month -3",ddate:"",cost:"",cur:"ILS",cost2:"",cur2:"AUD",vendor:"",comments:"",subs:[],income:"",incomeCur:"ILS",incomeDate:""};
   const [f,setF] = useState(a||blank);
   const [adv,setAdv] = useState(!!a?.id);
   const [ns,setNs] = useState("");
+  // finType: "expense" | "income" | "" (no financial value)
+  const initFinType = () => { if(a?.income&&+a.income>0) return "income"; if(a?.cost||a?.cost2) return "expense"; return ""; };
+  const [finType,setFinType] = useState(initFinType);
+  const [pendingDocFiles,setPendingDocFiles] = useState([]);
+  const [docUploading,setDocUploading] = useState(false);
+  const docFileRef = useRef();
   const sf=(k,v)=>setF(p=>({...p,[k]:v}));
 
   useEffect(()=>{
     if(f.subs?.some(s=>s.done)&&f.status==="tbd") sf("status","in progress");
   },[f.subs]);
 
-  const isFlight=f.id==="a9"||f.title.toLowerCase().includes("flight");
+  const switchFinType = type => {
+    setFinType(type);
+    // clear the fields that belong to the other type
+    if(type==="income") setF(p=>({...p,cost:"",cur:"ILS",cost2:"",cur2:"AUD",settled:false,settledDate:""}));
+    if(type==="expense") setF(p=>({...p,income:"",incomeCur:"ILS",incomeDate:""}));
+    if(type==="") setF(p=>({...p,cost:"",cur:"ILS",cost2:"",cur2:"AUD",settled:false,settledDate:"",income:"",incomeCur:"ILS",incomeDate:""}));
+  };
+
+  const handleDocFiles = e => {
+    const files = Array.from(e.target.files||[]);
+    setPendingDocFiles(prev=>[...prev,...files]);
+    e.target.value="";
+  };
+
+  const removeDocFile = idx => setPendingDocFiles(prev=>prev.filter((_,i)=>i!==idx));
+
+  const handleSave = async () => {
+    if(finType==="expense"&&f.settled&&!f.settledDate){alert("Please enter a settlement date");return;}
+    const itemId = f.id || ("a"+Date.now());
+    const savedItem = {...f, id:itemId};
+
+    if(pendingDocFiles.length>0 && setDocs){
+      setDocUploading(true);
+      for(let i=0;i<pendingDocFiles.length;i++){
+        const file = pendingDocFiles[i];
+        let files=[];
+        if(drive?.isAuthed){
+          try{
+            const folder = await driveEnsureFolder(drive.token,"General",DRIVE_ROOT);
+            const uploaded = await driveUploadFile(drive.token,file,folder.id,()=>{});
+            files=[{id:"f"+Date.now()+i,driveFileId:uploaded.id,driveFileName:uploaded.name,driveUrl:uploaded.webViewLink}];
+          }catch(e){/* drive failed, doc still created without file */}
+        }
+        setDocs(prev=>[...prev,{id:"d"+Date.now()+i,type:file.name.replace(/\.[^.]+$/,""),category:"General",status:"collected",exp:"",aid:itemId,files,notes:""}]);
+      }
+      setDocUploading(false);
+    }
+    onSave(savedItem);
+  };
+
+  const linkedDocs = (docs||[]).filter(d=>d.aid===f.id&&f.id);
 
   return(
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -2220,16 +2636,6 @@ function ItemModal({a,defaultPlanId,plans,onSave,onClose}){
               {["tbd","in progress","irrelevant","done"].map(s=><option key={s}>{s}</option>)}
             </select>
           </div>
-          {(f.cost||f.cost2) && <>
-            <div className="fcol" style={{display:"flex",alignItems:"center",gap:10,paddingTop:6}}>
-              <input type="checkbox" id="settled-cb" style={{width:16,height:16,accentColor:"var(--g)",cursor:"pointer"}} checked={!!f.settled} onChange={e=>sf("settled",e.target.checked)}/>
-              <label htmlFor="settled-cb" style={{fontSize:12,fontWeight:600,color:f.settled?"var(--g)":"var(--t1)",cursor:"pointer"}}>✅ Settled (paid)</label>
-            </div>
-            <div className="fcol">
-              <div className="flabel">Settlement Date {f.settled&&<span style={{color:"var(--re)"}}>*</span>}</div>
-              <input type="date" className="finput" value={f.settledDate||""} onChange={e=>sf("settledDate",e.target.value)} style={{borderColor:f.settled&&!f.settledDate?"var(--re)":""}}/>
-            </div>
-          </>}
         </div>
 
         {/* ADVANCED EXPAND */}
@@ -2248,22 +2654,56 @@ function ItemModal({a,defaultPlanId,plans,onSave,onClose}){
                 </select>
               </div>
               <div className="fcol">
-                <div className="flabel">Vendor</div>
+                <div className="flabel">Vendor / Party</div>
                 <input className="finput" value={f.vendor} onChange={e=>sf("vendor",e.target.value)}/>
               </div>
+
+              {/* FINANCIAL VALUE — single section, toggled type */}
               <div className="fcol span2">
-                <div className="flabel">Cost — same amount, two currencies (ILS used for totals)</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr auto",gap:6,alignItems:"center"}}>
-                  <input type="number" className="finput" value={f.cost} onChange={e=>sf("cost",e.target.value)} placeholder="0"/>
-                  <select className="fselect" value={f.cur} onChange={e=>sf("cur",e.target.value)} style={{width:72}}>
-                    {["ILS","AUD","USD"].map(c=><option key={c}>{c}</option>)}
-                  </select>
-                  <input type="number" className="finput" value={f.cost2||""} onChange={e=>sf("cost2",e.target.value)} placeholder="0 (optional)"/>
-                  <select className="fselect" value={f.cur2||"AUD"} onChange={e=>sf("cur2",e.target.value)} style={{width:72}}>
-                    {["ILS","AUD","USD"].map(c=><option key={c}>{c}</option>)}
-                  </select>
+                <div className="flabel">Financial value</div>
+                <div style={{display:"flex",gap:6,marginBottom:8}}>
+                  {[["","None"],["expense","💸 Expense"],["income","💵 Income"]].map(([v,lbl])=>(
+                    <button key={v} type="button"
+                      className={"btn btn-sm "+(finType===v?"btn-g":"btn-s")}
+                      style={{flex:1,fontSize:11}}
+                      onClick={()=>switchFinType(v)}
+                    >{lbl}</button>
+                  ))}
                 </div>
+
+                {finType==="expense"&&(
+                  <>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr auto",gap:6,alignItems:"center"}}>
+                      <input type="number" className="finput" value={f.cost} onChange={e=>sf("cost",e.target.value)} placeholder="Amount"/>
+                      <select className="fselect" value={f.cur} onChange={e=>sf("cur",e.target.value)} style={{width:72}}>
+                        {["ILS","AUD","USD"].map(c=><option key={c}>{c}</option>)}
+                      </select>
+                      <input type="number" className="finput" value={f.cost2||""} onChange={e=>sf("cost2",e.target.value)} placeholder="Alt amount (optional)"/>
+                      <select className="fselect" value={f.cur2||"AUD"} onChange={e=>sf("cur2",e.target.value)} style={{width:72}}>
+                        {["ILS","AUD","USD"].map(c=><option key={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div style={{display:"flex",gap:10,marginTop:8,alignItems:"center"}}>
+                      <input type="checkbox" id="settled-cb" style={{width:16,height:16,accentColor:"var(--g)",cursor:"pointer"}} checked={!!f.settled} onChange={e=>sf("settled",e.target.checked)}/>
+                      <label htmlFor="settled-cb" style={{fontSize:12,fontWeight:600,color:f.settled?"var(--g)":"var(--t1)",cursor:"pointer"}}>✅ Settled (paid)</label>
+                      {f.settled&&(
+                        <input type="date" className="finput" value={f.settledDate||""} onChange={e=>sf("settledDate",e.target.value)} style={{flex:1,borderColor:!f.settledDate?"var(--re)":""}}/>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {finType==="income"&&(
+                  <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:6,alignItems:"center"}}>
+                    <input type="number" className="finput" value={f.income||""} onChange={e=>sf("income",e.target.value)} placeholder="Amount received"/>
+                    <select className="fselect" value={f.incomeCur||"ILS"} onChange={e=>sf("incomeCur",e.target.value)} style={{width:72}}>
+                      {["ILS","AUD","USD"].map(c=><option key={c}>{c}</option>)}
+                    </select>
+                    <input type="date" className="finput" value={f.incomeDate||""} onChange={e=>sf("incomeDate",e.target.value)} title="Date received (optional)"/>
+                  </div>
+                )}
               </div>
+
               <div className="fcol span2">
                 <div className="flabel">Description</div>
                 <textarea className="ftextarea" value={f.desc} onChange={e=>sf("desc",e.target.value)} rows={2}/>
@@ -2287,15 +2727,45 @@ function ItemModal({a,defaultPlanId,plans,onSave,onClose}){
               <input className="finput" style={{flex:1}} placeholder="Add subtask…" value={ns} onChange={e=>setNs(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&ns.trim()){sf("subs",[...(f.subs||[]),{id:"s"+Date.now(),t:ns,done:false}]);setNs("");}}}/>
               <button className="btn btn-s btn-sm" onClick={()=>{if(ns.trim()){sf("subs",[...(f.subs||[]),{id:"s"+Date.now(),t:ns,done:false}]);setNs("");}}}>+ Add</button>
             </div>
+
+            {/* DOCUMENTS */}
+            <div className="modal-section">Documents</div>
+            {linkedDocs.length>0&&(
+              <div style={{marginBottom:8}}>
+                {linkedDocs.map(d=>(
+                  <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid var(--bd)"}}>
+                    <span style={{fontSize:12,flex:1,color:"var(--t0)"}}>{d.type||"Document"}</span>
+                    <span className={`tag ${DOC_STATUS_CLS[d.status||"pending"]}`}>{DOC_STATUS_LABEL[d.status||"pending"]}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <input type="file" ref={docFileRef} style={{display:"none"}} multiple onChange={handleDocFiles}/>
+              <button className="btn btn-s btn-sm" onClick={()=>docFileRef.current?.click()}>📎 Attach file</button>
+              {pendingDocFiles.length>0&&<span style={{fontSize:11,color:"var(--t2)"}}>{pendingDocFiles.length} file{pendingDocFiles.length>1?"s":""} queued</span>}
+            </div>
+            {pendingDocFiles.length>0&&(
+              <div style={{marginTop:8}}>
+                {pendingDocFiles.map((file,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",fontSize:12}}>
+                    <span style={{flex:1,color:"var(--t1)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {file.name}</span>
+                    <button style={{background:"none",border:"none",color:"var(--t2)",cursor:"pointer",fontSize:12,padding:"0 4px"}} onClick={()=>removeDocFile(i)}>✕</button>
+                  </div>
+                ))}
+                <div style={{fontSize:11,color:"var(--t2)",marginTop:4}}>
+                  {drive?.isAuthed?"Will upload to Google Drive on save.":"Files linked to this item · upload to Drive from the Docs tab."}
+                </div>
+              </div>
+            )}
           </>
         )}
 
         <div className="modal-footer">
           <button className="btn btn-s" onClick={onClose}>Cancel</button>
-          <button className="btn btn-g" onClick={()=>{
-            if(f.settled&&!f.settledDate){alert("Please enter a settlement date");return;}
-            onSave(f);
-          }}>Save Item</button>
+          <button className="btn btn-g" onClick={handleSave} disabled={docUploading}>
+            {docUploading?"Uploading…":"Save Item"}
+          </button>
         </div>
       </div>
     </div>

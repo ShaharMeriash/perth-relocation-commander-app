@@ -1562,6 +1562,10 @@ const DOC_STATUSES = ["pending","collected","submitted","approved","expired"];
 const DOC_STATUS_CLS = {pending:"tam",collected:"tg",submitted:"tb",approved:"tg",expired:"tr"};
 const DOC_STATUS_LABEL = {pending:"Pending",collected:"Collected",submitted:"Submitted",approved:"Approved",expired:"Expired"};
 
+const DOC_KINDS = ["copy","translation","invoice","form","contract","government"];
+const DOC_KIND_ICON = {copy:"📄",translation:"🌐",invoice:"💳",form:"📋",contract:"✍️",government:"🏛️"};
+const DOC_KIND_CLS  = {copy:"t3",translation:"tb",invoice:"tam",form:"tbd",contract:"tg",government:"tb"};
+
 // Returns unified file list — handles both legacy single-file and new multi-file shape
 function docAllFiles(d){
   if(d.files?.length) return d.files;
@@ -1589,7 +1593,7 @@ function sortDocsList(docs,sortBy){
 }
 
 function DocumentsTab({docs,setDocs,items,T,drive}){
-  const BLANK = {id:"",type:"",category:"",status:"pending",exp:"",aid:"",files:[],driveFileId:"",driveFileName:"",driveUrl:"",notes:""};
+  const BLANK = {id:"",type:"",category:"",kind:"",status:"pending",exp:"",aid:"",files:[],driveFileId:"",driveFileName:"",driveUrl:"",notes:""};
   const [mo,setMo] = useState(false);
   const [f,setF] = useState(BLANK);
   const [pendingFiles,setPendingFiles] = useState([]);
@@ -1597,6 +1601,12 @@ function DocumentsTab({docs,setDocs,items,T,drive}){
   const [uploading,setUploading] = useState(false);
   const [drag,setDrag] = useState(false);
   const fileRef = useRef();
+  // linked-item combobox
+  const [aidSearch,setAidSearch]   = useState("");
+  const [aidOpen,setAidOpen]       = useState(false);
+  const aidRef = useRef();
+  // group-by
+  const [groupBy,setGroupBy]       = useState("category"); // "category"|"kind"|"status"
 
   // sort + filter
   const [sortBy,setSortBy]         = useState("newest");
@@ -1612,7 +1622,7 @@ function DocumentsTab({docs,setDocs,items,T,drive}){
   const inlineRef = useRef();
 
   const sf=(k,v)=>setF(p=>({...p,[k]:v}));
-  const reset=()=>{setF(BLANK);setPendingFiles([]);setUploadProg(0);};
+  const reset=()=>{setF(BLANK);setPendingFiles([]);setUploadProg(0);setAidSearch("");setAidOpen(false);};
 
   const DOC_STATUS_CYCLE = {pending:"collected",collected:"submitted",submitted:"approved",approved:"expired",expired:"pending"};
   const cycleDocStatus = id => setDocs(prev=>prev.map(d=>d.id===id?{...d,status:DOC_STATUS_CYCLE[d.status||"pending"]}:d));
@@ -1639,12 +1649,15 @@ function DocumentsTab({docs,setDocs,items,T,drive}){
   const linkedAids=[...new Set(docs.map(d=>d.aid).filter(Boolean))];
 
   const openEdit=d=>{
-    // Migrate legacy single file into files array on open
     let data={...BLANK,...d,files:d.files?[...d.files]:[]};
     if(!data.files.length&&data.driveFileId){
       data={...data,files:[{id:"leg_"+d.id,driveFileId:d.driveFileId,driveFileName:d.driveFileName,driveUrl:d.driveUrl}]};
     }
     setF(data);setPendingFiles([]);setMo(true);
+    // pre-fill aid search label
+    const linked=items.find(a=>a.id===d.aid);
+    setAidSearch(linked?linked.title:"");
+    setAidOpen(false);
   };
 
   const duplicate=d=>{
@@ -1704,19 +1717,36 @@ function DocumentsTab({docs,setDocs,items,T,drive}){
   const pending=docs.filter(d=>!d.status||d.status==="pending").length;
   const hasFilters=search||filterCat||filterSt||filterFile||filterAid;
 
-  // Group visible docs by category
-  const CAT_UNCATEGORIZED = "Uncategorized";
-  const catOrder = [...existingCats.filter(Boolean), CAT_UNCATEGORIZED];
-  const byCategory = catOrder.reduce((acc,cat)=>{
-    const catDocs = visible.filter(d=>(d.category||CAT_UNCATEGORIZED)===cat);
-    if(catDocs.length) acc[cat]=catDocs;
-    return acc;
-  },{});
-  // Catch any cats in visible that weren't in existingCats
+  // Flexible grouping
+  const NONE_LABEL = {category:"Uncategorized", kind:"No type set", status:"Pending"};
+  const getGroupKey = d => {
+    if(groupBy==="category") return d.category||"";
+    if(groupBy==="kind")     return d.kind||"";
+    if(groupBy==="status")   return d.status||"pending";
+    return "";
+  };
+  const getGroupLabel = key => {
+    if(groupBy==="status") return DOC_STATUS_LABEL[key]||"Pending";
+    if(groupBy==="kind")   return key?(DOC_KIND_ICON[key]+" "+key.charAt(0).toUpperCase()+key.slice(1)):NONE_LABEL.kind;
+    return key||NONE_LABEL.category;
+  };
+  const getGroupIcon = key => {
+    if(groupBy==="category") return "📁";
+    if(groupBy==="kind")     return "";   // icon already in label
+    if(groupBy==="status")   return "";
+    return "📁";
+  };
+  // Build ordered group map
+  const groupMap = {};
   visible.forEach(d=>{
-    const cat=d.category||CAT_UNCATEGORIZED;
-    if(!byCategory[cat]) byCategory[cat]=[d];
-    else if(!byCategory[cat].includes(d)) byCategory[cat].push(d);
+    const key=getGroupKey(d)||"__none__";
+    if(!groupMap[key]) groupMap[key]=[];
+    groupMap[key].push(d);
+  });
+  // Sort group keys: none last
+  const groupKeys = Object.keys(groupMap).sort((a,b)=>{
+    if(a==="__none__") return 1; if(b==="__none__") return -1;
+    return a.localeCompare(b);
   });
 
   return(
@@ -1725,7 +1755,7 @@ function DocumentsTab({docs,setDocs,items,T,drive}){
       <input ref={inlineRef} type="file" style={{display:"none"}} onChange={e=>{handleInlineFile(e.target.files[0]||null);e.target.value="";}}/>
 
       {/* Header row */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
         <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
           <span style={{fontSize:12,color:"var(--t1)"}}><strong>{docs.length}</strong> docs</span>
           <span style={{fontSize:12,color:"var(--g)"}}>✓ {collected} ready</span>
@@ -1736,84 +1766,92 @@ function DocumentsTab({docs,setDocs,items,T,drive}){
         <button className="btn btn-g btn-sm" onClick={()=>{reset();setMo(true);}}>+ Add Doc</button>
       </div>
 
-      {/* Search bar (slim) */}
-      <div style={{display:"flex",gap:7,marginBottom:16,alignItems:"center"}}>
-        <input className="search-in" placeholder="🔍 Search docs…" value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1}}/>
+      {/* Search + group-by bar */}
+      <div style={{display:"flex",gap:7,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+        <input className="search-in" placeholder="🔍 Search docs…" value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,minWidth:140}}/>
         {search&&<button className="btn btn-s btn-sm" onClick={()=>setSearch("")}>✕</button>}
+        <div style={{display:"flex",gap:3,background:"var(--s2)",borderRadius:8,padding:3}}>
+          {[["category","📁 Category"],["kind","🏷️ Type"],["status","🔵 Status"]].map(([v,lbl])=>(
+            <button key={v} className={"btn btn-sm "+(groupBy===v?"btn-g":"btn-s")}
+              style={{fontSize:10,padding:"4px 9px",border:"none",borderRadius:6}}
+              onClick={()=>setGroupBy(v)}>{lbl}</button>
+          ))}
+        </div>
       </div>
 
-      {/* Category sections */}
-      {Object.keys(byCategory).length===0&&(
+      {/* Grouped sections */}
+      {groupKeys.length===0&&(
         <div style={{color:"var(--t2)",textAlign:"center",padding:"40px 0",fontSize:13}}>
           {search?"No documents match your search":"No documents yet — tap + Add Doc to get started"}
         </div>
       )}
-      {Object.entries(byCategory).map(([cat,catDocs])=>(
-        <div key={cat} className="doc-cat-section">
-          <div className="doc-cat-header">
-            <span className="doc-cat-title">📁 {cat}</span>
-            <span className="doc-cat-count">{catDocs.length}</span>
-            <button className="doc-cat-add" onClick={()=>{reset();setF(p=>({...p,category:cat===CAT_UNCATEGORIZED?"":cat}));setMo(true);}}>+ Add</button>
-          </div>
-          <div className="doc-grid">
-            {catDocs.map(d=>{
-              const expiring=d.exp&&new Date(d.exp)<soonDate;
-              const sc=DOC_STATUS_CLS[d.status||"pending"]||"tam";
-              const sl=DOC_STATUS_LABEL[d.status||"pending"]||"Pending";
-              const allFiles=docAllFiles(d);
-              const hasFile=allFiles.length>0;
-              const isInlineUploading=inlineUploading&&inlineId===d.id;
-              const linkedItem=d.aid?items.find(a=>a.id===d.aid):null;
-              return(
-                <div key={d.id} className={`doc-cube${hasFile?" has-file":""}`}>
-                  {/* Name */}
-                  <div className="doc-cube-name">{d.type||"Document"}</div>
+      {groupKeys.map(key=>{
+        const grpDocs = groupMap[key];
+        const label = key==="__none__" ? NONE_LABEL[groupBy] : getGroupLabel(key);
+        const icon  = key==="__none__" ? "📁" : getGroupIcon(key);
+        // pre-fill field when adding from a group
+        const addPreset = groupBy==="category" ? {category:key==="__none__"?"":key}
+                        : groupBy==="kind"     ? {kind:key==="__none__"?"":key}
+                        : {};
+        return(
+          <div key={key} className="doc-cat-section">
+            <div className="doc-cat-header">
+              <span className="doc-cat-title">{icon} {label}</span>
+              <span className="doc-cat-count">{grpDocs.length}</span>
+              <button className="doc-cat-add" onClick={()=>{reset();setF(p=>({...p,...addPreset}));setMo(true);}}>+ Add</button>
+            </div>
+            <div className="doc-grid">
+              {grpDocs.map(d=>{
+                const expiring=d.exp&&new Date(d.exp)<soonDate;
+                const sc=DOC_STATUS_CLS[d.status||"pending"]||"tam";
+                const sl=DOC_STATUS_LABEL[d.status||"pending"]||"Pending";
+                const allFiles=docAllFiles(d);
+                const hasFile=allFiles.length>0;
+                const isInlineUploading=inlineUploading&&inlineId===d.id;
+                const linkedItem=d.aid?items.find(a=>a.id===d.aid):null;
+                return(
+                  <div key={d.id} className={`doc-cube${hasFile?" has-file":""}`}>
+                    <div className="doc-cube-name">{d.type||"Document"}</div>
 
-                  {/* Status badge — click to cycle */}
-                  <div className="doc-cube-meta">
-                    <span
-                      className={"tag "+sc+" status-tog"}
-                      title={"Click to change → "+DOC_STATUS_LABEL[DOC_STATUS_CYCLE[d.status||"pending"]]}
-                      onClick={()=>cycleDocStatus(d.id)}
-                    >{sl}</span>
-                  </div>
-
-                  {/* File link(s) or placeholder */}
-                  {hasFile?(
-                    <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                      {allFiles.map((file,fi)=>(
-                        <a key={fi} href={file.driveUrl} target="_blank" rel="noopener noreferrer" className="doc-cube-file">
-                          📂 {file.driveFileName||(allFiles.length>1?`File ${fi+1}`:"File")}
-                        </a>
-                      ))}
+                    <div className="doc-cube-meta">
+                      <span className={"tag "+sc+" status-tog"}
+                        title={"Click → "+DOC_STATUS_LABEL[DOC_STATUS_CYCLE[d.status||"pending"]]}
+                        onClick={()=>cycleDocStatus(d.id)}>{sl}</span>
+                      {d.kind&&<span className={"tag "+DOC_KIND_CLS[d.kind]}>{DOC_KIND_ICON[d.kind]} {d.kind}</span>}
                     </div>
-                  ):(
-                    <div className="doc-cube-nofile">No file yet</div>
-                  )}
 
-                  {/* Expiry */}
-                  {d.exp&&<div className="doc-cube-exp">{expiring?"⚠️ ":""}Exp {d.exp}</div>}
-
-                  {/* Linked item */}
-                  {linkedItem&&<div className="doc-cube-link">🔗 {linkedItem.title}</div>}
-
-                  {/* Actions */}
-                  <div className="doc-cube-actions">
-                    {drive!==null&&(
-                      <button className="btn btn-s btn-xs" title={drive?.isAuthed?"Upload file":"Connect Drive first"} disabled={isInlineUploading}
-                        onClick={()=>{setInlineId(d.id);setTimeout(()=>inlineRef.current?.click(),0);}}>
-                        {isInlineUploading?"⏳":"📎"}
-                      </button>
+                    {hasFile?(
+                      <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                        {allFiles.map((file,fi)=>(
+                          <a key={fi} href={file.driveUrl} target="_blank" rel="noopener noreferrer" className="doc-cube-file">
+                            📂 {file.driveFileName||(allFiles.length>1?`File ${fi+1}`:"File")}
+                          </a>
+                        ))}
+                      </div>
+                    ):(
+                      <div className="doc-cube-nofile">No file yet</div>
                     )}
-                    <button className="btn btn-s btn-xs" onClick={()=>openEdit(d)}>Edit</button>
-                    <button className="btn btn-d btn-xs" onClick={()=>setDocs(p=>p.filter(x=>x.id!==d.id))}>✕</button>
+
+                    {d.exp&&<div className="doc-cube-exp">{expiring?"⚠️ ":""}Exp {d.exp}</div>}
+                    {linkedItem&&<div className="doc-cube-link">🔗 {linkedItem.title}</div>}
+
+                    <div className="doc-cube-actions">
+                      {drive!==null&&(
+                        <button className="btn btn-s btn-xs" title={drive?.isAuthed?"Upload":"Connect Drive first"} disabled={isInlineUploading}
+                          onClick={()=>{setInlineId(d.id);setTimeout(()=>inlineRef.current?.click(),0);}}>
+                          {isInlineUploading?"⏳":"📎"}
+                        </button>
+                      )}
+                      <button className="btn btn-s btn-xs" onClick={()=>openEdit(d)}>Edit</button>
+                      <button className="btn btn-d btn-xs" onClick={()=>setDocs(p=>p.filter(x=>x.id!==d.id))}>✕</button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Modal */}
       {mo&&<div className="overlay" onClick={e=>e.target===e.currentTarget&&(setMo(false),reset())}>
@@ -1837,10 +1875,54 @@ function DocumentsTab({docs,setDocs,items,T,drive}){
                 </select>
               </div>
               <div className="fcol"><div className="flabel">Expiry Date</div><input type="date" className="finput" value={f.exp} onChange={e=>sf("exp",e.target.value)}/></div>
-              <div className="fcol"><div className="flabel">Linked Action Item</div>
-                <select className="fselect" value={f.aid} onChange={e=>sf("aid",e.target.value)}>
-                  <option value="">None</option>{items.map(a=><option key={a.id} value={a.id}>{a.title}</option>)}
-                </select>
+
+              {/* Linked item — searchable combobox */}
+              <div className="fcol span2" style={{position:"relative"}} ref={aidRef}>
+                <div className="flabel">Linked Action Item</div>
+                <div style={{position:"relative"}}>
+                  <input
+                    className="finput"
+                    placeholder="Search items…"
+                    value={aidSearch}
+                    onChange={e=>{setAidSearch(e.target.value);setAidOpen(true);if(!e.target.value){sf("aid","");}}}
+                    onFocus={()=>setAidOpen(true)}
+                    onBlur={()=>setTimeout(()=>setAidOpen(false),150)}
+                  />
+                  {f.aid&&<button style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"var(--t2)",cursor:"pointer",fontSize:13,lineHeight:1}} onClick={()=>{sf("aid","");setAidSearch("");}}>✕</button>}
+                </div>
+                {aidOpen&&(
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:50,background:"var(--s0)",border:"1px solid var(--bd)",borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,.12)",maxHeight:180,overflowY:"auto",marginTop:2}}>
+                    {items
+                      .filter(a=>!aidSearch.trim()||a.title.toLowerCase().includes(aidSearch.toLowerCase()))
+                      .slice(0,20)
+                      .map(a=>(
+                        <div key={a.id}
+                          style={{padding:"8px 12px",fontSize:12,cursor:"pointer",borderBottom:"1px solid var(--bd)",color:"var(--t0)"}}
+                          onMouseDown={()=>{sf("aid",a.id);setAidSearch(a.title);setAidOpen(false);}}
+                          onMouseEnter={e=>e.currentTarget.style.background="var(--s1)"}
+                          onMouseLeave={e=>e.currentTarget.style.background=""}
+                        >{a.title}</div>
+                      ))
+                    }
+                    {items.filter(a=>!aidSearch.trim()||a.title.toLowerCase().includes(aidSearch.toLowerCase())).length===0&&(
+                      <div style={{padding:"10px 12px",fontSize:12,color:"var(--t2)"}}>No items match</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Doc kind */}
+              <div className="fcol span2">
+                <div className="flabel">Document Kind</div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {["", ...DOC_KINDS].map(k=>(
+                    <button key={k||"none"} type="button"
+                      className={"btn btn-sm "+(f.kind===k?"btn-g":"btn-s")}
+                      style={{fontSize:11}}
+                      onClick={()=>sf("kind",k)}
+                    >{k?`${DOC_KIND_ICON[k]} ${k.charAt(0).toUpperCase()+k.slice(1)}`:"None"}</button>
+                  ))}
+                </div>
               </div>
             </div>
 

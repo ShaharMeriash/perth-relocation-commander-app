@@ -1562,9 +1562,9 @@ const DOC_STATUSES = ["pending","collected","submitted","approved","expired"];
 const DOC_STATUS_CLS = {pending:"tam",collected:"tg",submitted:"tb",approved:"tg",expired:"tr"};
 const DOC_STATUS_LABEL = {pending:"Pending",collected:"Collected",submitted:"Submitted",approved:"Approved",expired:"Expired"};
 
-const DOC_KINDS = ["copy","translation","invoice","form","contract","government"];
-const DOC_KIND_ICON = {copy:"📄",translation:"🌐",invoice:"💳",form:"📋",contract:"✍️",government:"🏛️"};
-const DOC_KIND_CLS  = {copy:"t3",translation:"tb",invoice:"tam",form:"tbd",contract:"tg",government:"tb"};
+const DOC_KINDS = ["copy","translation","invoice","form","contract","government","finance"];
+const DOC_KIND_ICON = {copy:"📄",translation:"🌐",invoice:"💳",form:"📋",contract:"✍️",government:"🏛️",finance:"💰"};
+const DOC_KIND_CLS  = {copy:"t3",translation:"tb",invoice:"tam",form:"tbd",contract:"tg",government:"tb",finance:"tg"};
 
 // Returns unified file list — handles both legacy single-file and new multi-file shape
 function docAllFiles(d){
